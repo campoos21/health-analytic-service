@@ -27,12 +27,15 @@ follows:
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from django.conf import settings
 
 from analytics.models import Visit
 from health_analytic_service.models import Patient, Record
+
+if TYPE_CHECKING:
+    from django.db.models import QuerySet
 
 # Maps EventType values → Visit model field names.
 _EVENT_TYPE_TO_FIELD: dict[str, str] = {
@@ -158,3 +161,59 @@ def assign_record_to_visit(record: Record) -> Optional[Visit]:
     record.save(update_fields=["visit"])
     _refresh_visit(found_visit, record)
     return found_visit
+
+
+# ─── Analytical query helpers ────────────────────────────────────────────────
+
+
+def get_completed_visit_durations(
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+) -> "QuerySet[Visit]":
+    """Return completed visits annotated with ``duration``.
+
+    Only visits that have both ``registration_at`` and ``departure_at`` set
+    (i.e. ``status=COMPLETED``) are included.  An optional date-range filter
+    is applied on ``registration_at``.
+
+    The returned queryset is annotated with a ``duration`` field (a
+    ``timedelta``) computed as ``departure_at − registration_at``.
+    """
+    from django.db.models import F  # local to avoid top-level circular risk
+
+    qs = Visit.objects.filter(
+        status=Visit.Status.COMPLETED,
+        registration_at__isnull=False,
+        departure_at__isnull=False,
+    )
+
+    if date_from is not None:
+        qs = qs.filter(registration_at__gte=date_from)
+    if date_to is not None:
+        qs = qs.filter(registration_at__lte=date_to)
+
+    return qs.annotate(duration=F("departure_at") - F("registration_at")).order_by(
+        "-registration_at"
+    )
+
+
+def get_incomplete_visits(
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+) -> "QuerySet[Visit]":
+    """Return visits that are **not** completed.
+
+    This includes ``IN_PROGRESS`` visits (still open) and ``INCOMPLETE``
+    visits (closed but missing boundary events).  An optional date-range
+    filter is applied on ``registration_at``.
+    """
+    qs = Visit.objects.filter(
+        status__in=[Visit.Status.IN_PROGRESS, Visit.Status.INCOMPLETE],
+    )
+
+    if date_from is not None:
+        qs = qs.filter(registration_at__gte=date_from)
+    if date_to is not None:
+        qs = qs.filter(registration_at__lte=date_to)
+
+    return qs.order_by("-created_at")

@@ -37,9 +37,9 @@ The first run will automatically:
 | `DELETE` | http://localhost:8000/api/v1/patients/{patient_id}         | Delete a patient                             |
 | **Record Ingest** | | |
 | `POST`   | http://localhost:8000/api/v1/records/                      | Upsert an ED visit record (idempotent)       |
-| **Analytics (stubs)** | | |
-| `GET`    | http://localhost:8000/api/v1/analytics/analytical_endpoint_1 | Analytics stub (returns `{}`)              |
-| `GET`    | http://localhost:8000/api/v1/analytics/analytical_endpoint_2 | Analytics stub (returns `{}`)              |
+| **Analytics** | | |
+| `GET`    | http://localhost:8000/api/v1/analytics/visit-durations        | Completed visit durations (seconds)        |
+| `GET`    | http://localhost:8000/api/v1/analytics/incomplete-visits      | Incomplete / in-progress visits            |
 
 > All `/api/v1/` endpoints require an `X-API-Key` header. Create an API key via the Django admin panel.
 
@@ -95,6 +95,67 @@ ED systems may have inconsistent data. The Visit model handles this gracefully:
 |---------|---------|-------------|
 | `VISIT_GAP_THRESHOLD_HOURS` | `24` | Max gap (hours) between events in the same visit. Configurable via environment variable. |
 
+### Analytical Endpoints
+
+Both endpoints query the **Visit** model, support date-range filtering on `registration_at`, offset/limit pagination, API-key authentication, and rate limiting.
+
+#### `GET /api/v1/analytics/visit-durations`
+
+Returns the duration (in whole seconds) of every **completed** visit — i.e. visits that have both `registration_at` and `departure_at`.
+
+| Query param | Type       | Default | Description |
+|-------------|------------|---------|-------------|
+| `date_from` | `datetime` | —       | Include visits registered **on or after** this timestamp |
+| `date_to`   | `datetime` | —       | Include visits registered **on or before** this timestamp |
+| `offset`    | `int`      | `0`     | Number of results to skip (pagination) |
+| `limit`     | `int`      | `20`    | Max results per page (capped at 100) |
+
+Example response:
+
+```json
+{
+  "count": 42,
+  "results": [
+    {
+      "id": 7,
+      "patient_id": "PAT-001",
+      "registration_at": "2026-04-01T08:00:00Z",
+      "departure_at": "2026-04-01T10:30:00Z",
+      "duration_seconds": 9000
+    }
+  ]
+}
+```
+
+#### `GET /api/v1/analytics/incomplete-visits`
+
+Returns visits that are **not** completed — status `IN_PROGRESS` or `INCOMPLETE` — along with their missing-boundary flags.
+
+| Query param | Type       | Default | Description |
+|-------------|------------|---------|-------------|
+| `date_from` | `datetime` | —       | Include visits registered **on or after** this timestamp |
+| `date_to`   | `datetime` | —       | Include visits registered **on or before** this timestamp |
+| `offset`    | `int`      | `0`     | Number of results to skip (pagination) |
+| `limit`     | `int`      | `20`    | Max results per page (capped at 100) |
+
+Example response:
+
+```json
+{
+  "count": 5,
+  "results": [
+    {
+      "id": 12,
+      "patient_id": "PAT-003",
+      "status": "IN_PROGRESS",
+      "is_registration_missing": false,
+      "is_departure_missing": true,
+      "registration_at": "2026-04-09T14:00:00Z"
+    }
+  ]
+}
+```
+
 ## Default Admin Credentials
 
 Defined in `.env`:
@@ -114,7 +175,7 @@ The Docker image includes dev tools (mypy, flakeheaven) and test tools (pytest, 
 
 ### Running Tests
 
-Run the full test suite (80 tests):
+Run the full test suite (91 tests):
 
 ```bash
 docker compose exec backend python -m pytest -v
@@ -157,7 +218,7 @@ docker compose run --rm --entrypoint "" backend python manage.py migrate
 | `health_analytic_service/tests/test_record_api.py`  | Integration | 7     | Record upsert, partial payloads, patient get-or-create |
 | `health_analytic_service/tests/test_auth.py`        | Integration | 6     | API key auth: missing, invalid, inactive → 401   |
 | `health_analytic_service/tests/test_throttling.py`  | Integration | 1     | Rate limiting returns 429 after threshold        |
-| `analytics/tests/test_analytics_api.py`             | Integration | 4     | Analytics stubs return 200, require auth         |
+| `analytics/tests/test_analytics_api.py`             | Integration | 15    | Visit durations & incomplete visits: filtering, pagination, auth |
 | `analytics/tests/test_visit_model.py`               | Unit        | 10    | Visit model creation, properties, cascade delete, ordering |
 | `analytics/tests/test_visit_assembly.py`            | Unit + Int  | 22    | Visit assembly: full lifecycle, missing events, time-gap splitting, idempotency, API integration |
 

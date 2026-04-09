@@ -53,8 +53,8 @@ class TestApiKeyAuth:
         assert resp.status_code == 401
 
     def test_auth_on_analytics_endpoints(self, client: Client, db: Any) -> None:
-        """Analytics stubs also require auth."""
-        resp1 = client.get("/api/v1/analytics/analytical_endpoint_1")
-        resp2 = client.get("/api/v1/analytics/analytical_endpoint_2")
+        """Analytics endpoints also require auth."""
+        resp1 = client.get("/api/v1/analytics/visit-durations")
+        resp2 = client.get("/api/v1/analytics/incomplete-visits")
         assert resp1.status_code == 401
         assert resp2.status_code == 401
