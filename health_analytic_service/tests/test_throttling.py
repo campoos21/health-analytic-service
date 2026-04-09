@@ -1,15 +1,16 @@
 """Integration tests for throttling / rate limiting."""
 
-import pytest
+from typing import Any
+
 from django.test import Client as DjangoTestClient
-from ninja import NinjaAPI, Router
+from ninja import NinjaAPI
 from ninja.throttling import AuthRateThrottle
 
 
 class TestThrottling:
     """Verify that rate limiting kicks in after exceeding the threshold."""
 
-    def test_rate_limit_exceeded(self, api_key):
+    def test_rate_limit_exceeded(self, api_key: Any) -> None:
         """After exceeding the rate limit, the server returns 429.
 
         We create a standalone NinjaAPI with a very low rate (2/min),
@@ -25,7 +26,7 @@ class TestThrottling:
         )
 
         @throttled_api.get("/test")
-        def test_view(request):
+        def test_view(request: Any) -> dict[str, bool]:
             return {"ok": True}
 
         # Temporarily override ROOT_URLCONF to include our throttled API
@@ -35,7 +36,7 @@ class TestThrottling:
 
         import types
         test_urls = types.ModuleType("test_throttle_urls")
-        test_urls.urlpatterns = test_urlpatterns
+        test_urls.urlpatterns = test_urlpatterns  # type: ignore[attr-defined]
 
         import sys
         sys.modules["test_throttle_urls"] = test_urls

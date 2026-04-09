@@ -13,3 +13,4 @@ staticfiles/
 *.mo
 dist/
 build/
+.flakeheaven_cache/

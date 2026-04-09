@@ -6,7 +6,7 @@ from health_analytic_service.models import ApiKey, Patient, Record
 
 
 @admin.register(ApiKey)
-class ApiKeyAdmin(admin.ModelAdmin):
+class ApiKeyAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
     """Admin view for API keys."""
 
     list_display = ("name", "key", "is_active", "created_at")
@@ -16,7 +16,7 @@ class ApiKeyAdmin(admin.ModelAdmin):
 
 
 @admin.register(Patient)
-class PatientAdmin(admin.ModelAdmin):
+class PatientAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
     """Admin view for patients."""
 
     list_display = ("patient_id", "patient_name", "date_of_birth", "contact_phone", "updated_at")
@@ -25,7 +25,7 @@ class PatientAdmin(admin.ModelAdmin):
 
 
 @admin.register(Record)
-class RecordAdmin(admin.ModelAdmin):
+class RecordAdmin(admin.ModelAdmin):  # type: ignore[type-arg]
     """Admin view for ED visit records."""
 
     list_display = ("record_id", "patient", "event_type", "facility", "timestamp", "updated_at")

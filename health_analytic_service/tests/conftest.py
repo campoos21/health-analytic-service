@@ -1,18 +1,20 @@
 """Shared test fixtures for the health_analytic_service test suite."""
 
+from typing import Any, Dict
+
 import pytest
 
 from health_analytic_service.models import ApiKey, Patient
 
 
 @pytest.fixture
-def api_key(db):
+def api_key(db: Any) -> ApiKey:
     """Create and return an active API key for authenticated test requests."""
     return ApiKey.objects.create(name="test-key", key="test-api-key-12345")
 
 
 @pytest.fixture
-def inactive_api_key(db):
+def inactive_api_key(db: Any) -> ApiKey:
     """Create and return an *inactive* API key."""
     return ApiKey.objects.create(
         name="inactive-key",
@@ -22,7 +24,7 @@ def inactive_api_key(db):
 
 
 @pytest.fixture
-def auth_headers(api_key):
+def auth_headers(api_key: ApiKey) -> Dict[str, Any]:
     """Return a dict with the X-API-Key header set to the active key.
 
     Django's test client expects headers as keyword arguments with the
@@ -32,7 +34,7 @@ def auth_headers(api_key):
 
 
 @pytest.fixture
-def sample_patient(db):
+def sample_patient(db: Any) -> Patient:
     """Create and return a sample patient."""
     return Patient.objects.create(
         patient_id="PAT-001",
@@ -44,7 +46,7 @@ def sample_patient(db):
 
 
 @pytest.fixture
-def sample_record_payload():
+def sample_record_payload() -> Dict[str, Any]:
     """Return a complete record ingest payload dict."""
     return {
         "record_id": "REC-001",

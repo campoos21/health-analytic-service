@@ -25,6 +25,8 @@ class ApiKey(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
+        """Meta options for ApiKey."""
+
         verbose_name = "API Key"
         verbose_name_plural = "API Keys"
 
@@ -46,6 +48,8 @@ class Patient(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Meta options for Patient."""
+
         ordering = ["patient_id"]
 
     def __str__(self) -> str:
@@ -82,6 +86,13 @@ class Record(models.Model):
         blank=True,
         related_name="records",
     )
+    visit = models.ForeignKey(
+        "analytics.Visit",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="records",
+    )
     facility = models.CharField(max_length=255, null=True, blank=True)
     timestamp = models.DateTimeField(null=True, blank=True)
     event_type = models.CharField(
@@ -108,7 +119,15 @@ class Record(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
+        """Meta options for Record."""
+
         ordering = ["-timestamp", "record_id"]
+        indexes = [
+            models.Index(
+                fields=["timestamp", "facility"],
+                name="ix_record_ts_facility",
+            ),
+        ]
 
     def __str__(self) -> str:
         """Return a readable representation of the record."""

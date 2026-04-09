@@ -1,11 +1,15 @@
 """Integration tests for the authentication layer."""
 
+from typing import Any, Dict
+
 import pytest
 from django.test import Client
 
+from health_analytic_service.models import ApiKey
+
 
 @pytest.fixture
-def client():
+def client() -> Client:
     """Return a Django test client."""
     return Client()
 
@@ -13,12 +17,12 @@ def client():
 class TestApiKeyAuth:
     """Verify that endpoints require a valid active API key."""
 
-    def test_no_key_returns_401(self, client, db):
+    def test_no_key_returns_401(self, client: Client, db: Any) -> None:
         """A request without X-API-Key gets 401."""
         resp = client.get("/api/v1/patients/")
         assert resp.status_code == 401
 
-    def test_invalid_key_returns_401(self, client, db):
+    def test_invalid_key_returns_401(self, client: Client, db: Any) -> None:
         """A request with a garbage key gets 401."""
         resp = client.get(
             "/api/v1/patients/",
@@ -26,7 +30,7 @@ class TestApiKeyAuth:
         )
         assert resp.status_code == 401
 
-    def test_inactive_key_returns_401(self, client, inactive_api_key):
+    def test_inactive_key_returns_401(self, client: Client, inactive_api_key: ApiKey) -> None:
         """A request with an inactive key gets 401."""
         resp = client.get(
             "/api/v1/patients/",
@@ -34,12 +38,12 @@ class TestApiKeyAuth:
         )
         assert resp.status_code == 401
 
-    def test_valid_key_returns_200(self, client, auth_headers, db):
+    def test_valid_key_returns_200(self, client: Client, auth_headers: Dict[str, Any], db: Any) -> None:
         """A request with a valid active key succeeds."""
         resp = client.get("/api/v1/patients/", **auth_headers)
         assert resp.status_code == 200
 
-    def test_auth_on_records_endpoint(self, client, db):
+    def test_auth_on_records_endpoint(self, client: Client, db: Any) -> None:
         """POST /records/ also requires auth."""
         resp = client.post(
             "/api/v1/records/",
@@ -48,7 +52,7 @@ class TestApiKeyAuth:
         )
         assert resp.status_code == 401
 
-    def test_auth_on_analytics_endpoints(self, client, db):
+    def test_auth_on_analytics_endpoints(self, client: Client, db: Any) -> None:
         """Analytics stubs also require auth."""
         resp1 = client.get("/api/v1/analytics/analytical_endpoint_1")
         resp2 = client.get("/api/v1/analytics/analytical_endpoint_2")

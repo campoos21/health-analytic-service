@@ -102,3 +102,10 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # ─── Default primary key field type ─────────────────────────────────────────
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ─── Visit assembly ─────────────────────────────────────────────────────────
+
+# Maximum gap (in hours) between consecutive events that still belong to the
+# same visit.  If two events for the same patient are further apart than this,
+# a new visit is started.
+VISIT_GAP_THRESHOLD_HOURS = int(os.environ.get("VISIT_GAP_THRESHOLD_HOURS", "24"))

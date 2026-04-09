@@ -6,7 +6,7 @@ Includes:
 * Analytics router       → ``/api/v1/analytics/``   (stubs, separate app)
 """
 
-from typing import List
+from typing import Any, List, Tuple
 
 from django.db import IntegrityError
 from django.http import HttpRequest, HttpResponse
@@ -14,10 +14,10 @@ from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Router
 from ninja.throttling import AuthRateThrottle
 
+from analytics.services import assign_record_to_visit
 from health_analytic_service.auth import ApiKeyAuth
 from health_analytic_service.models import Patient, Record
 from health_analytic_service.schemas import (
-    MessageOut,
     PatientIn,
     PatientOut,
     RecordIn,
@@ -39,13 +39,14 @@ def integrity_error_handler(request: HttpRequest, exc: IntegrityError) -> HttpRe
     """Return 409 Conflict when a unique constraint is violated."""
     return api.create_response(request, {"detail": str(exc)}, status=409)
 
+
 # ─── Patient CRUD ────────────────────────────────────────────────────────────
 
 patient_router = Router(tags=["patients"])
 
 
 @patient_router.post("/", response={201: PatientOut})
-def create_patient(request: HttpRequest, payload: PatientIn) -> tuple:
+def create_patient(request: HttpRequest, payload: PatientIn) -> Tuple[int, Any]:
     """Create a new patient."""
     patient = Patient.objects.create(**payload.dict())
     return 201, patient
@@ -74,7 +75,7 @@ def update_patient(request: HttpRequest, patient_id: str, payload: PatientIn) ->
 
 
 @patient_router.delete("/{patient_id}", response={204: None})
-def delete_patient(request: HttpRequest, patient_id: str) -> tuple:
+def delete_patient(request: HttpRequest, patient_id: str) -> Tuple[int, None]:
     """Delete a patient by ``patient_id``."""
     patient = get_object_or_404(Patient, patient_id=patient_id)
     patient.delete()
@@ -89,7 +90,7 @@ record_router = Router(tags=["records"])
 
 
 @record_router.post("/", response={200: RecordOut, 201: RecordOut})
-def ingest_record(request: HttpRequest, payload: RecordIn) -> tuple:
+def ingest_record(request: HttpRequest, payload: RecordIn) -> Tuple[int, RecordOut]:
     """Upsert an ED visit record (idempotent on ``record_id``).
 
     * If a ``patient_id`` is present the corresponding :class:`Patient` is
@@ -148,6 +149,9 @@ def ingest_record(request: HttpRequest, payload: RecordIn) -> tuple:
         for attr, value in defaults.items():
             setattr(record, attr, value)
         record.save()
+
+    # ── Assign record to a visit ─────────────────────────────────────────
+    assign_record_to_visit(record)
 
     # Build response
     response_data = RecordOut(
