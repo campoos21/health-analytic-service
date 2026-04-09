@@ -1,0 +1,21 @@
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["mypy_django_plugin.main"]
+exclude = ["migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["gunicorn.*"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "health_analytic_service.settings"
+
+[tool.flakeheaven]
+max_line_length = 120
+exclude = ["migrations/", "staticfiles/"]
+
+[tool.flakeheaven.plugins]
+pycodestyle = ["+*", "-W503"]
+pyflakes = ["+*"]
+flake8-docstrings = ["+*"]

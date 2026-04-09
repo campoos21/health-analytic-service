@@ -1,0 +1,9 @@
+-r requirements.txt
+
+# Type checking
+mypy==1.15.0
+django-stubs[compatible-mypy]==5.2.0
+
+# Linting
+flakeheaven==3.3.0
+flake8-docstrings==1.7.0

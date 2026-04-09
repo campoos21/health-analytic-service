@@ -40,6 +40,22 @@ Defined in `.env`:
 
 > **⚠️ Change these credentials before deploying to production.**
 
+## Development
+
+The Docker image includes dev tools (mypy, flakeheaven). After building, run them with:
+
+Run the type checker:
+
+```bash
+docker compose exec backend mypy .
+```
+
+Run the linter:
+
+```bash
+docker compose exec backend flakeheaven lint .
+```
+
 ## Stopping the Services
 
 ```bash

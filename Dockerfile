@@ -10,8 +10,8 @@ RUN apt-get update && \
 
 WORKDIR /build
 
-COPY requirements.txt .
-RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements.txt
+COPY requirements.txt requirements-dev.txt ./
+RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements-dev.txt
 
 # ───── Stage 2: Runtime ─────
 FROM python:3.11-slim AS runtime

@@ -1,6 +1,4 @@
-"""
-Django settings for health_analytic_service project.
-"""
+"""Django settings for health_analytic_service project."""
 
 import os
 from pathlib import Path

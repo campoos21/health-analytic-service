@@ -1,15 +1,13 @@
-"""
-URL configuration for health_analytic_service project.
-"""
+"""URL configuration for health_analytic_service project."""
 
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.http import JsonResponse
+from django.http import HttpRequest, JsonResponse
 from django.urls import path
 
 
-def healthcheck(request):
+def healthcheck(request: HttpRequest) -> JsonResponse:
     """Lightweight health-check endpoint used by Docker Compose."""
     return JsonResponse({"status": "ok"})
 
