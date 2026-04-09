@@ -43,6 +43,58 @@ The first run will automatically:
 
 > All `/api/v1/` endpoints require an `X-API-Key` header. Create an API key via the Django admin panel.
 
+## Data Model
+
+### Core Models (`health_analytic_service`)
+
+| Model       | Description |
+|-------------|-------------|
+| **ApiKey**  | API key for authenticating external clients. |
+| **Patient** | A patient that may appear across multiple ED visits. |
+| **Record**  | A single ED visit event (e.g. REGISTRATION, TRIAGE, DEPARTURE). Linked to a Patient and a Visit. |
+
+### Analytics Models (`analytics`)
+
+| Model     | Description |
+|-----------|-------------|
+| **Visit** | Aggregates multiple Record events into a single ED visit for one patient. |
+
+### Visit Assembly
+
+When a `Record` is ingested via `POST /api/v1/records/`, the system automatically groups it into a **Visit**:
+
+- **REGISTRATION** events always open a new visit.
+- Subsequent events (TRIAGE, BED_ASSIGNMENT, TREATMENT, DISPOSITION, DEPARTURE) attach to the current open visit for that patient.
+- A **DEPARTURE** event marks the visit as `COMPLETED`.
+- If the time gap between events exceeds a configurable threshold (default **24 hours**), a new visit is created.
+
+Each Visit stores **per-stage timestamps** directly:
+
+| Field               | Set by event type |
+|---------------------|-------------------|
+| `registration_at`   | REGISTRATION      |
+| `triage_at`         | TRIAGE            |
+| `bed_assignment_at` | BED_ASSIGNMENT    |
+| `treatment_at`      | TREATMENT         |
+| `disposition_at`    | DISPOSITION       |
+| `departure_at`      | DEPARTURE         |
+
+#### Handling Missing Events
+
+ED systems may have inconsistent data. The Visit model handles this gracefully:
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Missing REGISTRATION | Visit is created with `is_registration_missing = True`. Events still group by time proximity. |
+| Missing DEPARTURE | Visit stays `IN_PROGRESS` with `is_departure_missing = True`. |
+| Both present | Visit is `COMPLETED` with both flags `False`. |
+
+#### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `VISIT_GAP_THRESHOLD_HOURS` | `24` | Max gap (hours) between events in the same visit. Configurable via environment variable. |
+
 ## Default Admin Credentials
 
 Defined in `.env`:
@@ -56,11 +108,13 @@ Defined in `.env`:
 
 ## Development
 
+The source code is bind-mounted into the container (`./:/app`), so local changes are reflected immediately without rebuilding.
+
 The Docker image includes dev tools (mypy, flakeheaven) and test tools (pytest, factory-boy). After building, run them with:
 
 ### Running Tests
 
-Run the full test suite (48 tests):
+Run the full test suite (80 tests):
 
 ```bash
 docker compose exec backend python -m pytest -v
@@ -84,10 +138,13 @@ Run a specific test class or test:
 docker compose exec backend python -m pytest health_analytic_service/tests/test_record_api.py::TestRecordIngest::test_upsert_same_record_id -v
 ```
 
-Run all tests:
+### Generating Migrations
+
+When models are changed, generate and apply migrations inside the container:
 
 ```bash
-docker compose exec backend python -m pytest -v
+docker compose run --rm --entrypoint "" backend python manage.py makemigrations
+docker compose run --rm --entrypoint "" backend python manage.py migrate
 ```
 
 ### Test Structure
@@ -101,19 +158,21 @@ docker compose exec backend python -m pytest -v
 | `health_analytic_service/tests/test_auth.py`        | Integration | 6     | API key auth: missing, invalid, inactive → 401   |
 | `health_analytic_service/tests/test_throttling.py`  | Integration | 1     | Rate limiting returns 429 after threshold        |
 | `analytics/tests/test_analytics_api.py`             | Integration | 4     | Analytics stubs return 200, require auth         |
+| `analytics/tests/test_visit_model.py`               | Unit        | 10    | Visit model creation, properties, cascade delete, ordering |
+| `analytics/tests/test_visit_assembly.py`            | Unit + Int  | 22    | Visit assembly: full lifecycle, missing events, time-gap splitting, idempotency, API integration |
 
 ### Linting & Type Checking
 
 Run the type checker:
 
 ```bash
-docker compose exec backend mypy .
+docker compose exec backend mypy analytics/ health_analytic_service/ --ignore-missing-imports
 ```
 
 Run the linter:
 
 ```bash
-docker compose exec backend flakeheaven lint .
+docker compose exec backend flakeheaven lint analytics/ health_analytic_service/ --exclude="*/migrations/*"
 ```
 
 ## Stopping the Services
