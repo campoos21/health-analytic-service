@@ -30,6 +30,9 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Project apps
+    "health_analytic_service",
+    "analytics",
 ]
 
 MIDDLEWARE = [
