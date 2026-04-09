@@ -29,7 +29,7 @@ class PatientIn(Schema):
 
 
 class PatientOut(Schema):
-    """Schema returned when reading a patient."""
+    """Schema returned when reading a single patient (includes PII)."""
 
     id: int
     patient_id: str
@@ -37,6 +37,21 @@ class PatientOut(Schema):
     date_of_birth: Optional[date] = None
     ssn_last4: Optional[str] = None
     contact_phone: Optional[str] = None
+
+
+class PatientSummaryOut(Schema):
+    """Schema for patient list responses – no PII fields."""
+
+    id: int
+    patient_id: str
+    patient_name: Optional[str] = None
+
+
+class PaginatedPatientResponse(Schema):
+    """Paginated list of patient summaries."""
+
+    count: int
+    results: List[PatientSummaryOut]
 
 
 # ─── Record Schemas ──────────────────────────────────────────────────────────

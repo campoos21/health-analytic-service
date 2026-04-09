@@ -26,16 +26,20 @@ follows:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Optional
 
 from django.conf import settings
+from django.db import transaction
 
 from analytics.models import Visit
 from health_analytic_service.models import Patient, Record
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
+
+logger = logging.getLogger(__name__)
 
 # Maps EventType values → Visit model field names.
 _EVENT_TYPE_TO_FIELD: dict[str, str] = {
@@ -89,8 +93,12 @@ def _refresh_visit(visit: Visit, record: Record) -> None:
 
 
 def _find_open_visit(patient: Patient, timestamp: datetime, threshold: timedelta) -> Optional[Visit]:
-    """Return the best open visit for *patient* that is time-compatible."""
-    open_visits = Visit.objects.filter(
+    """Return the best open visit for *patient* that is time-compatible.
+
+    The queryset uses ``select_for_update()`` to prevent concurrent
+    modifications when called inside a ``transaction.atomic()`` block.
+    """
+    open_visits = Visit.objects.select_for_update().filter(
         patient=patient,
         status=Visit.Status.IN_PROGRESS,
     ).order_by("-registration_at")
@@ -104,63 +112,80 @@ def _find_open_visit(patient: Patient, timestamp: datetime, threshold: timedelta
 def assign_record_to_visit(record: Record) -> Optional[Visit]:
     """Assign *record* to a visit, creating one if needed.
 
+    The entire operation runs inside ``transaction.atomic()`` with row-level
+    locks (``select_for_update``) to prevent duplicate visits when records
+    for the same patient are ingested concurrently.
+
     Returns the :class:`Visit` the record was attached to, or ``None`` if the
     record has no patient or timestamp (both are required to group visits).
     """
     if record.patient is None or record.timestamp is None:
         return None
 
-    threshold = _gap_threshold()
-    patient = record.patient
-    event_type = record.event_type
+    with transaction.atomic():
+        threshold = _gap_threshold()
+        patient = record.patient
+        event_type = record.event_type
 
-    # ── REGISTRATION always opens a new visit ────────────────────────────
-    if event_type == Record.EventType.REGISTRATION:
-        # But first check if this record is already linked to a visit.
+        # ── REGISTRATION always opens a new visit ────────────────────────
+        if event_type == Record.EventType.REGISTRATION:
+            # But first check if this record is already linked to a visit.
+            if record.visit is not None:
+                _refresh_visit(record.visit, record)
+                return record.visit
+
+            # Also check if there's already a visit that started with this exact
+            # timestamp (idempotent re-send of REGISTRATION).
+            existing = Visit.objects.select_for_update().filter(
+                patient=patient,
+                registration_at=record.timestamp,
+            ).first()
+            if existing is not None:
+                record.visit = existing
+                record.save(update_fields=["visit"])
+                _refresh_visit(existing, record)
+                logger.debug(
+                    "Record %s re-attached to existing visit %s",
+                    record.record_id, existing.pk,
+                )
+                return existing
+
+            visit = Visit.objects.create(
+                patient=patient,
+                registration_at=record.timestamp,
+                is_registration_missing=False,
+            )
+            record.visit = visit
+            record.save(update_fields=["visit"])
+            _refresh_visit(visit, record)
+            logger.info(
+                "Created visit %s for patient %s (REGISTRATION)",
+                visit.pk, patient.patient_id,
+            )
+            return visit
+
+        # ── Non-REGISTRATION events: attach to an existing open visit ────
         if record.visit is not None:
+            # Already assigned – just refresh.
             _refresh_visit(record.visit, record)
             return record.visit
 
-        # Also check if there's already a visit that started with this exact
-        # timestamp (idempotent re-send of REGISTRATION).
-        existing = Visit.objects.filter(
-            patient=patient,
-            registration_at=record.timestamp,
-        ).first()
-        if existing is not None:
-            record.visit = existing
-            record.save(update_fields=["visit"])
-            _refresh_visit(existing, record)
-            return existing
+        found_visit = _find_open_visit(patient, record.timestamp, threshold)
 
-        visit = Visit.objects.create(
-            patient=patient,
-            registration_at=record.timestamp,
-            is_registration_missing=False,
-        )
-        record.visit = visit
+        if found_visit is None:
+            found_visit = Visit.objects.create(
+                patient=patient,
+                is_registration_missing=True,
+            )
+            logger.info(
+                "Created visit %s for patient %s (missing registration)",
+                found_visit.pk, patient.patient_id,
+            )
+
+        record.visit = found_visit
         record.save(update_fields=["visit"])
-        _refresh_visit(visit, record)
-        return visit
-
-    # ── Non-REGISTRATION events: attach to an existing open visit ────────
-    if record.visit is not None:
-        # Already assigned – just refresh.
-        _refresh_visit(record.visit, record)
-        return record.visit
-
-    found_visit = _find_open_visit(patient, record.timestamp, threshold)
-
-    if found_visit is None:
-        found_visit = Visit.objects.create(
-            patient=patient,
-            is_registration_missing=True,
-        )
-
-    record.visit = found_visit
-    record.save(update_fields=["visit"])
-    _refresh_visit(found_visit, record)
-    return found_visit
+        _refresh_visit(found_visit, record)
+        return found_visit
 
 
 # ─── Analytical query helpers ────────────────────────────────────────────────

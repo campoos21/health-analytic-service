@@ -3,26 +3,31 @@
 Includes:
 * Patient CRUD router   → ``/api/v1/patients/``
 * Record ingest endpoint → ``/api/v1/records/``
-* Analytics router       → ``/api/v1/analytics/``   (stubs, separate app)
+* Analytics router       → ``/api/v1/analytics/``
 """
 
+import logging
 from typing import Any, List, Tuple
 
 from django.db import IntegrityError
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
-from ninja import NinjaAPI, Router
+from ninja import NinjaAPI, Query, Router
 from ninja.throttling import AuthRateThrottle
 
 from analytics.services import assign_record_to_visit
 from health_analytic_service.auth import ApiKeyAuth
 from health_analytic_service.models import Patient, Record
 from health_analytic_service.schemas import (
+    PaginatedPatientResponse,
     PatientIn,
     PatientOut,
+    PatientSummaryOut,
     RecordIn,
     RecordOut,
 )
+
+logger = logging.getLogger(__name__)
 
 # ─── API instance ────────────────────────────────────────────────────────────
 
@@ -37,8 +42,18 @@ api = NinjaAPI(
 @api.exception_handler(IntegrityError)
 def integrity_error_handler(request: HttpRequest, exc: IntegrityError) -> HttpResponse:
     """Return 409 Conflict when a unique constraint is violated."""
-    return api.create_response(request, {"detail": str(exc)}, status=409)
+    logger.warning("IntegrityError on %s %s: %s", request.method, request.path, exc)
+    return api.create_response(
+        request,
+        {"detail": "A record with this identifier already exists."},
+        status=409,
+    )
 
+
+# ─── Defaults ────────────────────────────────────────────────────────────────
+
+_DEFAULT_LIMIT = 20
+_MAX_LIMIT = 100
 
 # ─── Patient CRUD ────────────────────────────────────────────────────────────
 
@@ -52,10 +67,26 @@ def create_patient(request: HttpRequest, payload: PatientIn) -> Tuple[int, Any]:
     return 201, patient
 
 
-@patient_router.get("/", response=List[PatientOut])
-def list_patients(request: HttpRequest) -> List[Patient]:
-    """Return all patients."""
-    return list(Patient.objects.all())
+@patient_router.get("/", response=PaginatedPatientResponse)
+def list_patients(
+    request: HttpRequest,
+    offset: int = Query(0),  # type: ignore[type-arg]  # noqa: B008
+    limit: int = Query(_DEFAULT_LIMIT),  # type: ignore[type-arg]  # noqa: B008
+) -> PaginatedPatientResponse:
+    """Return paginated patient summaries (no PII)."""
+    limit = min(limit, _MAX_LIMIT)
+    qs = Patient.objects.all()
+    count = qs.count()
+    page = qs[offset:offset + limit]
+    results: List[PatientSummaryOut] = [
+        PatientSummaryOut(
+            id=p.pk,
+            patient_id=p.patient_id,
+            patient_name=p.patient_name,
+        )
+        for p in page
+    ]
+    return PaginatedPatientResponse(count=count, results=results)
 
 
 @patient_router.get("/{patient_id}", response=PatientOut)

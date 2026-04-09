@@ -3,8 +3,17 @@
 from typing import Any, Dict
 
 import pytest
+from django.core.cache import cache
 
 from health_analytic_service.models import ApiKey, Patient
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache() -> Any:
+    """Clear the in-memory cache before each test."""
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture

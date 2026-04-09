@@ -40,24 +40,50 @@ class TestCreatePatient:
             **auth_headers,
         )
         assert resp.status_code == 409
+        assert resp.json()["detail"] == "A record with this identifier already exists."
 
 
 class TestListPatients:
     """GET /api/v1/patients/."""
 
     def test_list_empty(self, client: Client, auth_headers: Dict[str, Any], db: Any) -> None:
-        """An empty DB returns an empty list."""
-        resp = client.get("/api/v1/patients/", **auth_headers)
-        assert resp.status_code == 200
-        assert resp.json() == []
-
-    def test_list_with_patients(self, client: Client, auth_headers: Dict[str, Any], sample_patient: Any) -> None:
-        """Returns all patients."""
+        """An empty DB returns a paginated response with zero results."""
         resp = client.get("/api/v1/patients/", **auth_headers)
         assert resp.status_code == 200
         body = resp.json()
-        assert len(body) == 1
-        assert body[0]["patient_id"] == "PAT-001"
+        assert body["count"] == 0
+        assert body["results"] == []
+
+    def test_list_with_patients(self, client: Client, auth_headers: Dict[str, Any], sample_patient: Any) -> None:
+        """Returns paginated patient summaries without PII."""
+        resp = client.get("/api/v1/patients/", **auth_headers)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["count"] == 1
+        assert len(body["results"]) == 1
+        result = body["results"][0]
+        assert result["patient_id"] == "PAT-001"
+        assert result["patient_name"] == "John Doe"
+        # PII fields must NOT be present in summary
+        assert "ssn_last4" not in result
+        assert "contact_phone" not in result
+
+    def test_list_pagination(self, client: Client, auth_headers: Dict[str, Any], db: Any) -> None:
+        """Offset/limit pagination works correctly."""
+        from health_analytic_service.models import Patient as PatientModel
+
+        for i in range(5):
+            PatientModel.objects.create(patient_id=f"PAT-PAGE-{i}")
+
+        resp = client.get("/api/v1/patients/", {"offset": 0, "limit": 2}, **auth_headers)
+        body = resp.json()
+        assert body["count"] == 5
+        assert len(body["results"]) == 2
+
+        resp2 = client.get("/api/v1/patients/", {"offset": 4, "limit": 2}, **auth_headers)
+        body2 = resp2.json()
+        assert body2["count"] == 5
+        assert len(body2["results"]) == 1
 
 
 class TestGetPatient:
