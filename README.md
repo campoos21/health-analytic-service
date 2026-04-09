@@ -52,42 +52,6 @@ The `GET /api/v1/patients/` endpoint returns **paginated summaries** without PII
 | `offset`    | `int` | `0`     | Number of results to skip |
 | `limit`     | `int` | `20`    | Max results per page (capped at 100) |
 
-## Security & Architecture
-
-### API Key Management
-
-- API keys are **masked** in the Django admin list view (only the first 8 characters are shown).
-- The full key is displayed **only once** — immediately after creation via a flash message.
-- Keys are **read-only** after creation (cannot be edited in the admin).
-
-### Authentication Caching
-
-API key lookups are cached in-memory (`LocMemCache`) for **60 seconds** to avoid a database query on every request. The cache is automatically invalidated when keys are deactivated.
-
-### Concurrency Safety
-
-Visit assembly (`assign_record_to_visit`) runs inside `transaction.atomic()` with `select_for_update()` row-level locks to prevent duplicate visits when records for the same patient are ingested concurrently.
-
-### Error Sanitisation
-
-Database integrity errors (e.g. duplicate `patient_id`) return a **generic 409** message (`"A record with this identifier already exists."`) instead of leaking internal DB details.
-
-### CORS
-
-Cross-origin requests are handled by `django-cors-headers`. Allowed origins are configurable via the `CORS_ALLOWED_ORIGINS` environment variable (comma-separated).
-
-### Structured Logging
-
-The service uses Django's `LOGGING` framework with console output. Log levels are configurable via `DJANGO_LOG_LEVEL` (default: `INFO`). Key events logged:
-
-- Visit creation and record attachment (`analytics` logger)
-- Authentication failures (`health_analytic_service` logger)
-- Integrity constraint violations (`health_analytic_service` logger)
-
-### Connection Pooling
-
-Database connections are kept alive for **600 seconds** (`CONN_MAX_AGE`) by default, avoiding the overhead of opening/closing a connection per request. Configurable via `DB_CONN_MAX_AGE`.
-
 ## Data Model
 
 ### Core Models (`health_analytic_service`)
@@ -269,6 +233,12 @@ docker compose run --rm --entrypoint "" backend python manage.py migrate
 | `analytics/tests/test_analytics_api.py`             | Integration | 15    | Visit durations & incomplete visits: filtering, pagination, auth |
 | `analytics/tests/test_visit_model.py`               | Unit        | 10    | Visit model creation, properties, cascade delete, ordering |
 | `analytics/tests/test_visit_assembly.py`            | Unit + Int  | 22    | Visit assembly: full lifecycle, missing events, time-gap splitting, idempotency, API integration |
+
+### Up and Build Services
+
+```bash
+docker compose up --build
+```
 
 ### Linting & Type Checking
 
